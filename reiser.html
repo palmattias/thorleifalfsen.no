@@ -1,0 +1,677 @@
+<!DOCTYPE html>
+<html lang="nb">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Reiser &amp; kart — Thorleif Alfsen</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;600&family=Source+Serif+4:ital,wght@0,400;0,600;1,400&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+  <style>
+    :root {
+      --color-bg: #fafaf8;
+      --color-text: #1a1a1a;
+      --color-text-secondary: #555;
+      --color-accent: #2c3e5a;
+      --color-border: #ddd;
+      --color-quote-bg: #f0f0ec;
+      --font-body: 'Source Serif 4', 'Georgia', serif;
+      --font-heading: 'Inter', 'Helvetica Neue', sans-serif;
+    }
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    html, body { height: 100%; font-family: var(--font-heading); color: var(--color-text); background: var(--color-bg); }
+
+    /* — Layout — */
+    .page-wrap { display: flex; flex-direction: column; height: 100vh; }
+
+    /* — Nav — */
+    .site-nav {
+      background: var(--color-bg);
+      border-bottom: 1px solid var(--color-border);
+      padding: 0.7rem 1.5rem;
+      display: flex;
+      justify-content: center;
+      gap: 2rem;
+      font-size: 0.85rem;
+      letter-spacing: 0.03em;
+      flex-shrink: 0;
+    }
+    .site-nav a { color: var(--color-text-secondary); text-decoration: none; }
+    .site-nav a:hover, .site-nav a.active { color: var(--color-accent); }
+
+    /* — Map area — */
+    .map-area { flex: 1; position: relative; overflow: hidden; }
+    #map { width: 100%; height: 100%; }
+
+    /* — Ship selector (horizontal strip) — */
+    .ship-strip {
+      position: absolute;
+      top: 12px;
+      left: 12px;
+      right: 12px;
+      z-index: 1000;
+      display: flex;
+      gap: 6px;
+      overflow-x: auto;
+      -webkit-overflow-scrolling: touch;
+      scrollbar-width: none;
+      padding-bottom: 4px;
+    }
+    .ship-strip::-webkit-scrollbar { display: none; }
+    .ship-btn {
+      flex-shrink: 0;
+      padding: 6px 12px;
+      border: none;
+      border-radius: 20px;
+      font-family: var(--font-heading);
+      font-size: 0.75rem;
+      font-weight: 500;
+      cursor: pointer;
+      background: var(--color-bg);
+      color: var(--color-text-secondary);
+      box-shadow: 0 1px 4px rgba(0,0,0,0.15);
+      transition: all 0.15s;
+      white-space: nowrap;
+    }
+    .ship-btn:hover { background: #fff; color: var(--color-text); }
+    .ship-btn.active { background: var(--color-accent); color: #fff; }
+    .ship-btn.torpedert.active { background: #c0392b; }
+
+    /* — Info panel (bottom sheet) — */
+    .info-panel {
+      position: absolute;
+      bottom: 0;
+      left: 0;
+      right: 0;
+      z-index: 1000;
+      background: #fff;
+      border-radius: 16px 16px 0 0;
+      box-shadow: 0 -2px 20px rgba(0,0,0,0.12);
+      transform: translateY(100%);
+      transition: transform 0.3s ease;
+      max-height: 70vh;
+      overflow-y: auto;
+      -webkit-overflow-scrolling: touch;
+    }
+    .info-panel.visible { transform: translateY(0); }
+
+    .info-panel-handle {
+      width: 36px;
+      height: 4px;
+      background: #ccc;
+      border-radius: 2px;
+      margin: 10px auto 0;
+    }
+    .info-panel-close {
+      position: absolute;
+      top: 10px;
+      right: 14px;
+      background: none;
+      border: none;
+      font-size: 1.3rem;
+      cursor: pointer;
+      color: var(--color-text-secondary);
+      line-height: 1;
+      padding: 4px 8px;
+    }
+    .info-panel-content {
+      padding: 1.2rem 1.5rem 1.5rem;
+    }
+    .info-panel-ship {
+      font-size: 1.1rem;
+      font-weight: 600;
+      margin-bottom: 0.2rem;
+    }
+    .info-panel-period {
+      font-size: 0.8rem;
+      color: var(--color-text-secondary);
+      text-transform: uppercase;
+      letter-spacing: 0.04em;
+      margin-bottom: 0.8rem;
+    }
+    .info-panel-badge {
+      display: inline-block;
+      font-size: 0.65rem;
+      text-transform: uppercase;
+      letter-spacing: 0.05em;
+      padding: 2px 8px;
+      border-radius: 2px;
+      margin-bottom: 1rem;
+    }
+    .badge-torpedert { background: #c0392b; color: #fff; }
+    .badge-marine { background: var(--color-accent); color: #fff; }
+    .badge-handel { background: #7f8c8d; color: #fff; }
+    .badge-land { background: #95a5a6; color: #fff; }
+    .info-panel-detail {
+      font-family: var(--font-body);
+      font-size: 0.95rem;
+      line-height: 1.7;
+      margin-bottom: 1rem;
+    }
+
+    /* — Point info (when clicking a specific marker) — */
+    .info-panel-point {
+      background: var(--color-quote-bg);
+      padding: 0.8rem 1rem;
+      border-radius: 4px;
+      margin-top: 0.5rem;
+    }
+    .info-panel-point-name {
+      font-weight: 600;
+      font-size: 0.9rem;
+      margin-bottom: 0.3rem;
+    }
+    .info-panel-point-text {
+      font-family: var(--font-body);
+      font-size: 0.85rem;
+      line-height: 1.6;
+      color: var(--color-text-secondary);
+    }
+
+    /* — Stops list inside panel — */
+    .stops-list {
+      list-style: none;
+      margin-top: 1rem;
+      border-top: 1px solid var(--color-border);
+      padding-top: 0.8rem;
+    }
+    .stops-list li {
+      padding: 0.5rem 0;
+      font-size: 0.85rem;
+      display: flex;
+      align-items: flex-start;
+      gap: 0.6rem;
+      cursor: pointer;
+      border-radius: 4px;
+      padding-left: 0.3rem;
+    }
+    .stops-list li:hover {
+      background: var(--color-quote-bg);
+    }
+    .stop-dot {
+      width: 10px;
+      height: 10px;
+      border-radius: 50%;
+      flex-shrink: 0;
+      margin-top: 0.3rem;
+    }
+    .stop-name { flex: 1; line-height: 1.4; }
+
+    /* — Desktop: panel on the left side — */
+    @media (min-width: 800px) {
+      .info-panel {
+        top: 12px;
+        bottom: 12px;
+        left: 12px;
+        right: auto;
+        width: 380px;
+        border-radius: 12px;
+        max-height: none;
+        transform: translateX(-110%);
+      }
+      .info-panel.visible { transform: translateX(0); }
+      .info-panel-handle { display: none; }
+      .ship-strip {
+        left: 400px;
+      }
+      .info-panel.visible ~ .ship-strip {
+        left: 400px;
+      }
+    }
+
+    /* — Dark mode — */
+    [data-theme="dark"] {
+      --color-bg: #1a1a1a;
+      --color-text: #e0ddd8;
+      --color-text-secondary: #a0a0a0;
+      --color-accent: #7da0ca;
+      --color-border: #333;
+      --color-quote-bg: #252525;
+    }
+    [data-theme="dark"] .info-panel { background: #222; }
+    [data-theme="dark"] .ship-btn { background: #222; color: #a0a0a0; box-shadow: 0 1px 4px rgba(0,0,0,0.4); }
+    [data-theme="dark"] .ship-btn:hover { background: #333; color: #e0ddd8; }
+    @media (prefers-color-scheme: dark) {
+      :root:not([data-theme="light"]) {
+        --color-bg: #1a1a1a;
+        --color-text: #e0ddd8;
+        --color-text-secondary: #a0a0a0;
+        --color-accent: #7da0ca;
+        --color-border: #333;
+        --color-quote-bg: #252525;
+      }
+      :root:not([data-theme="light"]) .info-panel { background: #222; }
+      :root:not([data-theme="light"]) .ship-btn { background: #222; color: #a0a0a0; box-shadow: 0 1px 4px rgba(0,0,0,0.4); }
+      :root:not([data-theme="light"]) .ship-btn:hover { background: #333; color: #e0ddd8; }
+    }
+    .theme-toggle {
+      background: none; border: none; cursor: pointer;
+      font-size: 1rem; padding: 0.2rem 0.4rem;
+      color: var(--color-text-secondary); transition: color 0.2s; line-height: 1;
+    }
+    .theme-toggle:hover { color: var(--color-accent); }
+
+    /* — Leaflet popup override — */
+    .leaflet-popup-content-wrapper {
+      border-radius: 8px;
+      box-shadow: 0 2px 12px rgba(0,0,0,0.15);
+    }
+    .leaflet-popup-content {
+      font-family: var(--font-heading);
+      font-size: 0.85rem;
+      line-height: 1.5;
+      margin: 10px 14px;
+    }
+  </style>
+  <script>var t=localStorage.getItem('theme')||'dark';document.documentElement.setAttribute('data-theme',t);</script>
+</head>
+<body>
+
+<div class="page-wrap">
+  <nav class="site-nav">
+    <a href="index.html">Fortellingen</a>
+    <a href="reiser.html" class="active">Reiser &amp; kart</a>
+    <a href="index.html#kilder">Kilder</a>
+    <button class="theme-toggle" id="themeToggle" aria-label="Bytt til mørk modus">&#9790;</button>
+  </nav>
+
+  <div class="map-area">
+    <div id="map"></div>
+
+    <div class="ship-strip" id="shipStrip"></div>
+
+    <div class="info-panel" id="infoPanel">
+      <div class="info-panel-handle"></div>
+      <button class="info-panel-close" id="closePanel">&times;</button>
+      <div class="info-panel-content" id="infoPanelContent"></div>
+    </div>
+  </div>
+</div>
+
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+<script>
+const voyages = [
+  {
+    id: "brisk", ship: "D/S Brisk", type: "handel",
+    period: "Mai 1939 – mars 1940", role: "Dekksgutt",
+    summary: "Thorleifs aller første skip. Fred Olsens dampskip fra Oslo. Han var 16 år gammel. Krigen i Europa var ennå bare skyer i horisonten.",
+    points: [
+      { name: "Skien", lat: 59.21, lng: 9.61, text: "Thorleif mønstrer på sitt første skip, 16 år gammel. Mai 1939." }
+    ],
+    routes: []
+  },
+  {
+    id: "navarra", ship: "D/S Navarra", type: "torpedert",
+    period: "16. mars – 6. april 1940", role: "Dekksgutt",
+    summary: "Torpedert av U-59 kl. 02:20 den 6. april 1940. 12 mann omkom, deriblant Thorleifs to kamerater fra Follestad — Trygve Thorsen og Alf Kittilsen. 14 overlevde etter 9 timer i åpen livbåt. Thorleif var 16 år og kunne ikke svømme.",
+    points: [
+      { name: "Skien", lat: 59.21, lng: 9.61, text: "Påmønstret 16. mars 1940, i Skiens byfjord. Med seg to kamerater fra Follestad: Trygve Thorsen og Alf Kittilsen." },
+      { name: "Bergen", lat: 60.39, lng: 5.32, text: "I konvoi fra Bergen mot England." },
+      { name: "Swansea", lat: 51.62, lng: -3.94, text: "Lastet 3.000 tonn kull for retur til Oslo. Seilte med alle lys tent — Norge var nøytralt." },
+      { name: "Torpedert — 59°N, 04°W", lat: 59.0, lng: -4.0, text: "6. april 1940, kl. 02:20. U-59 (Harald Jürst) torpederte uten forvarsel. Skipet sank på 3 minutter. 12 omkom. Thorleif sto til rors da det smalt. «Nils, forut!» — bare to ord." },
+      { name: "Kirkwall, Orknøyene", lat: 58.98, lng: -2.96, text: "Plukket opp av finske D/S Atlas etter 9 timer i åpen livbåt. Satt i land lørdag ettermiddag. Samme kveld ble Orknøyene bombet." }
+    ],
+    routes: [
+      [[59.21,9.61],[59.05,9.6],[58.97,9.75],[58.95,10.0],[58.7,9.8],[58.3,8.2],[58.0,6.8],[57.95,6.0],[58.05,5.7],[58.5,5.5],[59.3,5.4],[59.8,5.3],[60.39,5.32]],
+      [[60.39,5.32],[60.0,4.0],[58.5,1.0],[56.0,-2.0],[54.0,-4.5],[52.5,-5.5],[51.5,-5.5],[50.5,-5.3],[50.2,-5.1],[51.0,-4.5],[51.62,-3.94]],
+      [[51.62,-3.94],[51.0,-4.5],[50.2,-5.1],[50.0,-5.8],[50.5,-7.0],[52.0,-7.0],[54.0,-6.5],[56.0,-6.0],[59.0,-4.0]],
+      [[59.0,-4.0],[58.98,-2.96]]
+    ]
+  },
+  {
+    id: "topdalsfjord", ship: "D/S Topdalsfjord", type: "handel",
+    period: "9. april – 30. nov 1940", role: "Jungmann",
+    summary: "Mønstret på sin 17-årsdag — 9. april 1940 — dagen Norge ble invadert. Krysset Atlanterhavet 4 ganger. Var med i minst 7 konvoier. Så Amerika for første gang.",
+    points: [
+      { name: "Kirkwall", lat: 58.98, lng: -2.96, text: "Påmønstret 9. april 1940. Hans 17-årsdag. Samme dag invaderte Tyskland Norge. Konvoi ON 25 var nettopp blitt snudd — de kom aldri hjem." },
+      { name: "Hull", lat: 53.74, lng: -0.33, text: "Kursen ble lagt mot Hull etter at Norge falt. Ingen hjemreise." },
+      { name: "Southend", lat: 51.54, lng: 0.71, text: "Kystekonvoier rundt Storbritannia." },
+      { name: "Hampton Roads, Virginia", lat: 36.97, lng: -76.33, text: "Ankom 14. juli 1940. Thorleif, 17 år fra Follestad, så Amerika for første gang." },
+      { name: "Halifax, Nova Scotia", lat: 44.65, lng: -63.57, text: "Konvoibase. Convoy HX 70 med fosfat til England." },
+      { name: "Garston, Liverpool", lat: 53.35, lng: -2.9, text: "Leverte fosfatlast." },
+      { name: "Wabana, Newfoundland", lat: 47.65, lng: -52.94, text: "Lastet jernmalm for retur til Wales." },
+      { name: "Port Talbot, Wales", lat: 51.59, lng: -3.79, text: "Avmønstret 30. november 1940. 8 måneder om bord, 4 atlanterhavskryssinger, 7 konvoier. Fortsatt 17 år." }
+    ],
+    routes: [
+      [[58.98,-2.96],[57.5,-1.5],[55.0,0.0],[53.74,-0.33]],
+      [[53.74,-0.33],[52.0,1.0],[51.54,0.71]],
+      [[51.54,0.71],[50.5,-2.0],[49.5,-6.0],[48.0,-15.0],[43.0,-30.0],[38.0,-55.0],[36.97,-76.33]],
+      [[36.97,-76.33],[40.0,-68.0],[44.65,-63.57]],
+      [[44.65,-63.57],[50.0,-40.0],[53.0,-15.0],[53.35,-2.9]],
+      [[53.35,-2.9],[52.0,-5.0],[49.5,-6.0],[48.0,-15.0],[47.65,-52.94]],
+      [[47.65,-52.94],[44.65,-63.57]],
+      [[44.65,-63.57],[50.0,-40.0],[52.0,-10.0],[51.59,-3.79]]
+    ]
+  },
+  {
+    id: "norseking", ship: "D/S Norse King", type: "handel",
+    period: "20. feb – 6. sept 1941", role: "Jungmann",
+    summary: "Atlanterhavskonvoier mellom Liverpool og Halifax. 19 dager med Convoy SC 29 i 7–8 knop. Skipet gikk ned med alle mann 15 måneder etter at Thorleif mønstret av.",
+    points: [
+      { name: "Liverpool", lat: 53.41, lng: -2.99, text: "Påmønstret 20. februar 1941. Liverpool ble bombet konstant. «En gang fra klokka seks på morgenen til seks om kvelden.»" },
+      { name: "Halifax", lat: 44.65, lng: -63.57, text: "Konvoibase. Convoy OB 295 og SC 29." },
+      { name: "Boston", lat: 42.36, lng: -71.06, text: "Mellom konvoier." },
+      { name: "Loch Ewe, Skottland", lat: 57.85, lng: -5.64, text: "Ankomst etter 19 dagers overfart med SC 29." },
+      { name: "Sydney, Cape Breton", lat: 46.14, lng: -60.19, text: "Ankom skadet fra Convoy OG 64 i juni 1941." },
+      { name: "St. John, New Brunswick", lat: 45.27, lng: -66.06, text: "Nesten en måned i havn, trolig reparasjoner." },
+      { name: "Oban", lat: 56.41, lng: -5.47, text: "Ankomst fra Convoy HX 144." },
+      { name: "Hull", lat: 53.74, lng: -0.33, text: "Avmønstret 6. september 1941. Skipet gikk ned med alle mann i desember 1942." }
+    ],
+    routes: [
+      [[53.41,-2.99],[53.0,-6.0],[52.0,-15.0],[49.0,-30.0],[45.0,-50.0],[44.65,-63.57]],
+      [[44.65,-63.57],[42.36,-71.06]],
+      [[42.36,-71.06],[44.65,-63.57]],
+      [[44.65,-63.57],[49.0,-30.0],[55.0,-10.0],[57.85,-5.64]],
+      [[57.85,-5.64],[58.0,-8.0],[55.0,-20.0],[50.0,-40.0],[46.14,-60.19]],
+      [[46.14,-60.19],[45.27,-66.06]],
+      [[45.27,-66.06],[44.65,-63.57]],
+      [[44.65,-63.57],[49.0,-30.0],[55.0,-10.0],[56.41,-5.47]],
+      [[56.41,-5.47],[55.5,-2.0],[54.5,-0.5],[53.74,-0.33]]
+    ]
+  },
+  {
+    id: "astrell", ship: "M/T Astrell", type: "handel",
+    period: "29. sept 1941 – 29. april 1942", role: "Lettmatros",
+    summary: "Tankskip med olje. Seilte mellom Texas, Karibien og England. Grunnstøtt ved Barra Head i januar 1942. To grunnstøtinger og en storm på ni dager.",
+    points: [
+      { name: "Liverpool", lat: 53.41, lng: -2.99, text: "Påmønstret 29. september 1941. Første gang på tankskip — olje i stedet for tørrlast." },
+      { name: "Corpus Christi, Texas", lat: 27.8, lng: -97.4, text: "Fra Follestad til Texas med olje i tankene og U-båter i havet." },
+      { name: "Houston", lat: 29.76, lng: -95.37, text: "Oljeterminaler i Gulfstatene." },
+      { name: "Hampton Roads", lat: 36.97, lng: -76.33, text: "Transitt nordover langs østkysten." },
+      { name: "Halifax", lat: 44.65, lng: -63.57, text: "Convoy HX 162 tilbake til UK." },
+      { name: "Belfast Lough", lat: 54.7, lng: -5.7, text: "Ankomst 10. desember 1941." },
+      { name: "Southampton", lat: 50.9, lng: -1.4, text: "Jul 1941." },
+      { name: "Barra Head — GRUNNSTØTT", lat: 56.78, lng: -7.64, text: "15. januar 1942. Gikk på grunn i Convoy ON 57. Sendte SOS. Norske korvetten Eglantine sendt for å hjelpe. Klarte seg selv, returnerte til Oban." },
+      { name: "Oban", lat: 56.41, lng: -5.47, text: "Returnert etter grunnstøtingen. Forsøkte å seile ut 18. jan — tvunget tilbake av storm. Grunnstøtt igjen ved Toward Point 24. januar." },
+      { name: "New Orleans", lat: 29.95, lng: -90.07, text: "Ankom 28. februar 1942 via Convoy ON 62." },
+      { name: "Galveston", lat: 29.3, lng: -94.8, text: "Oljeterminaler igjen." },
+      { name: "Grangemouth, Skottland", lat: 56.01, lng: -3.72, text: "Avmønstret 29. april 1942. 6 måneder senere ble Astrell torpedert ved Curaçao." }
+    ],
+    routes: [
+      [[53.41,-2.99],[52.0,-8.0],[49.0,-20.0],[45.0,-45.0],[44.65,-63.57]],
+      [[44.65,-63.57],[40.0,-68.0],[32.0,-78.0],[27.0,-90.0],[27.8,-97.4]],
+      [[27.8,-97.4],[29.76,-95.37]],
+      [[29.76,-95.37],[28.5,-88.0],[30.0,-81.0],[36.97,-76.33]],
+      [[36.97,-76.33],[40.0,-68.0],[44.65,-63.57]],
+      [[44.65,-63.57],[49.0,-30.0],[53.0,-10.0],[54.7,-5.7]],
+      [[54.7,-5.7],[54.0,-5.0],[52.5,-2.0],[50.9,-1.4]],
+      [[50.9,-1.4],[52.5,-2.0],[54.0,-5.0],[54.7,-5.7]],
+      [[54.7,-5.7],[55.5,-6.5],[56.5,-7.2],[56.78,-7.64]],
+      [[56.78,-7.64],[56.6,-6.0],[56.41,-5.47]],
+      [[56.41,-5.47],[55.0,-8.0],[50.0,-15.0],[40.0,-40.0],[30.0,-80.0],[29.95,-90.07]],
+      [[29.95,-90.07],[29.3,-94.8]],
+      [[29.3,-94.8],[28.0,-88.0],[30.0,-78.0],[40.0,-68.0],[44.65,-63.57]],
+      [[44.65,-63.57],[49.0,-30.0],[55.0,-5.0],[56.01,-3.72]]
+    ]
+  },
+  {
+    id: "emmabakke", ship: "M/S Emma Bakke", type: "handel",
+    period: "26. mai – 16. sept 1942", role: "Matros",
+    summary: "Siste skip i handelsflåten. Rapportert SAVNET etter 2 dager — Thorleif rømte for å melde seg til Marinen, men ble avvist som «too young». Kom tilbake, fullførte sommeren, mønstret av for siste gang.",
+    points: [
+      { name: "Liverpool", lat: 53.41, lng: -2.99, text: "Påmønstret 26. mai 1942. Rapportert SAVNET 28. mai — 2 dager senere. Han hadde stukket av for å melde seg til Marinen. «Too young» sto det på kortet." },
+      { name: "New York", lat: 40.69, lng: -74.04, text: "Atlanterhavsruten Liverpool–Halifax–New York. «Ofte kom bare halve konvoien fram.»" },
+      { name: "Halifax", lat: 44.65, lng: -63.57, text: "Konvoibase. Convoy HX 196, ON 115, HX 205." },
+      { name: "Liverpool", lat: 53.42, lng: -2.98, text: "Avmønstret 16. september 1942. Ferdig med handelsflåten for godt. Meldte seg til Marinen 5. oktober." }
+    ],
+    routes: [
+      [[53.41,-2.99],[52.0,-8.0],[48.0,-25.0],[42.0,-55.0],[40.69,-74.04]],
+      [[40.69,-74.04],[42.0,-68.0],[44.65,-63.57]],
+      [[44.65,-63.57],[49.0,-30.0],[53.0,-8.0],[53.41,-2.99]],
+      [[53.41,-2.99],[52.0,-8.0],[48.0,-25.0],[42.0,-55.0],[40.69,-74.04]],
+      [[40.69,-74.04],[42.0,-68.0],[44.65,-63.57]],
+      [[44.65,-63.57],[49.0,-30.0],[53.0,-8.0],[53.42,-2.98]]
+    ]
+  },
+  {
+    id: "marinen", ship: "Marinetrening", type: "land",
+    period: "Okt – nov 1942", role: "U.d.m.",
+    summary: "Vervet seg til Den Kongelige Norske Marine 5. oktober 1942. Grunnleggende trening i Skegness. Deretter Marinens depot i Devonport — Wingfield Nursing Home.",
+    points: [
+      { name: "London — S.O.K.", lat: 51.51, lng: -0.13, text: "Sjøforsvarets Overkommando. «3/10-42 Join The Norw. Navy» står det på kortet. Dekksgutten fra Follestad var blitt marinesoldat." },
+      { name: "Skegness", lat: 53.14, lng: 0.34, text: "Treningsleir. Royal Arthur. Grunnleggende marinetrening, 9. oktober – 25. november 1942." },
+      { name: "Devonport", lat: 50.37, lng: -4.18, text: "Marinens depot. Wingfield Nursing Home — et rekvirert pleiehjem for opptil 200 norske marinegaster. 4 dager her før skipstjeneste." }
+    ],
+    routes: [
+      [[51.51,-0.13],[51.8,0.5],[52.5,0.5],[53.14,0.34]],
+      [[53.14,0.34],[52.0,0.5],[51.5,1.0],[51.0,0.5],[50.8,-0.5],[50.5,-2.0],[50.37,-4.18]]
+    ]
+  },
+  {
+    id: "stalbans", ship: "HNoMS St. Albans", type: "marine",
+    period: "29. nov 1942 – 17. jan 1944", role: "U.d.m.",
+    summary: "14 måneder om bord. Minst 25 konvoieskorter i Nord-Atlanteren. Seilte gjennom vendepunktet i Slaget om Atlanterhavet — «Black May» i mai 1943 da 43 tyske U-båter ble senket.",
+    points: [
+      { name: "Liverpool", lat: 53.41, lng: -2.99, text: "Base for Western Approaches Command." },
+      { name: "Halifax", lat: 44.65, lng: -63.57, text: "Base for Western Local Escort Force. HX- og ON-konvoier frem og tilbake, frem og tilbake." },
+      { name: "Loch Ewe", lat: 57.85, lng: -5.64, text: "Samlingspunkt for konvoier i det nordlige Skottland." },
+      { name: "Methil", lat: 56.18, lng: -3.0, text: "Kystkonvoier langs britisk østkyst." }
+    ],
+    routes: [
+      [[53.41,-2.99],[52.0,-8.0],[49.0,-25.0],[45.0,-50.0],[44.65,-63.57]],
+      [[44.65,-63.57],[49.0,-30.0],[55.0,-10.0],[57.85,-5.64]],
+      [[57.85,-5.64],[56.0,-4.0],[53.41,-2.99]],
+      [[53.41,-2.99],[52.0,-8.0],[49.0,-25.0],[45.0,-50.0],[44.65,-63.57]],
+      [[44.65,-63.57],[49.0,-30.0],[53.0,-8.0],[53.41,-2.99]]
+    ]
+  },
+  {
+    id: "svenner", ship: "HNoMS Svenner", type: "torpedert",
+    period: "8. mars – 6. juni 1944", role: "Matros / kanomann",
+    summary: "Marinens nyeste jager. Torpedert av tyske E-båter utenfor Sword Beach på D-dagen kl. 05:30. Det første allierte krigsskipet senket den 6. juni 1944. 33 nordmenn omkom. Thorleif hang etter en line fra HMS Swift, måtte slippe, lå 3–4 timer i sjøen. Kunne ikke svømme.",
+    points: [
+      { name: "Greenock — overtatt", lat: 55.95, lng: -4.76, text: "8. mars 1944 — skipet overført til Den Norske Marine. Thorleif mønstret på dag én. Splinterny S-klasse jager." },
+      { name: "Scapa Flow", lat: 58.91, lng: -3.1, text: "Opptrening med Home Fleet i april." },
+      { name: "Portsmouth", lat: 50.8, lng: -1.09, text: "Samlingspunkt for Force S. Øvelser i mai. «Svenner» og «Stord» i spissen for den østlige bombardementsstyrken." },
+      { name: "Sword Beach — TORPEDERT", lat: 49.29, lng: -0.31, text: "6. juni 1944, kl. 05:30. Tre torpedoer — to gikk forbi, den tredje traff midtskips. Kjelerommet eksploderte. Skipet brakk i to på under 2 minutter. Thorleif hoppet i sjøen med redningsvest, hang etter en line fra HMS Swift, måtte slippe. Plukket opp av amerikansk ubåtjager etter 3–4 timer. Han kunne ikke svømme." }
+    ],
+    routes: [
+      [[55.95,-4.76],[57.0,-5.5],[58.91,-3.1]],
+      [[58.91,-3.1],[57.5,-3.0],[55.0,-2.0],[52.0,-2.5],[50.8,-1.09]],
+      [[50.8,-1.09],[50.5,-0.8],[49.8,-0.6],[49.29,-0.31]]
+    ]
+  },
+  {
+    id: "arendal", ship: "HNoMS Arendal", type: "marine",
+    period: "Nov 1944 – mai 1945", role: "U.d.m.",
+    summary: "Hunt-klasse eskorte-jager. Patrulje i Nordsjøen og Den engelske kanal. Den 13. mai 1945 eskorterte Arendal den hurtige mineleggeren HMS Apollo med kronprins Olav inn Oslofjorden. Thorleif kom hjem.",
+    points: [
+      { name: "Devonport — depot", lat: 50.37, lng: -4.18, text: "5 måneder på land etter Svenner. Den lengste perioden i hele krigen at Thorleif var på land." },
+      { name: "Harwich", lat: 51.95, lng: 1.29, text: "16. jagerflotilje. Eskorte og patrulje i Nordsjøen. «Et skip lastet med ammunisjon ble truffet. Da røyken la seg, var det ikke spor igjen.»" },
+      { name: "Edinburgh", lat: 55.95, lng: -3.19, text: "Marinens stasjon. Siste tjenestested før freden." },
+      { name: "Oslo — HJEM", lat: 59.91, lng: 10.75, text: "13. mai 1945. Arendal eskorterte HMS Apollo med kronprins Olav inn Oslofjorden. Thorleif sto på dekket. Han hadde dratt som 16-åring. Han kom hjem som 22-åring." }
+    ],
+    routes: [
+      [[50.37,-4.18],[50.3,-3.5],[50.6,-1.0],[50.8,0.5],[51.5,1.0],[51.95,1.29]],
+      [[51.95,1.29],[53.0,1.5],[55.0,-0.5],[55.95,-3.19]],
+      [[55.95,-3.19],[56.5,-2.0],[57.0,0.0],[57.5,3.0],[58.0,5.0],[58.5,7.0],[59.0,9.0],[59.5,10.2],[59.91,10.75]]
+    ]
+  }
+];
+
+const typeColors = { handel: '#7f8c8d', marine: '#2c3e5a', torpedert: '#c0392b', land: '#95a5a6' };
+const typeBadge = { handel: 'Handelsflåten', marine: 'Marinen', torpedert: 'Torpedert', land: 'På land' };
+
+const map = L.map('map', { zoomControl: true }).setView([54, -10], 4);
+
+function isDarkMode() {
+  const theme = document.documentElement.getAttribute('data-theme');
+  if (theme === 'dark') return true;
+  if (theme === 'light') return false;
+  return window.matchMedia('(prefers-color-scheme: dark)').matches;
+}
+
+const lightTiles = L.tileLayer('https://{s}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}{r}.png', {
+  attribution: '&copy; OpenStreetMap &copy; CARTO', maxZoom: 16
+});
+const darkTiles = L.tileLayer('https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png', {
+  attribution: '&copy; OpenStreetMap &copy; CARTO', maxZoom: 16
+});
+
+(isDarkMode() ? darkTiles : lightTiles).addTo(map);
+
+let activeRoutes = [];
+let activeMarkers = [];
+let currentVoyage = null;
+
+const panel = document.getElementById('infoPanel');
+const panelContent = document.getElementById('infoPanelContent');
+const closeBtn = document.getElementById('closePanel');
+
+closeBtn.addEventListener('click', () => panel.classList.remove('visible'));
+
+function clearMap() {
+  activeRoutes.forEach(r => map.removeLayer(r));
+  activeMarkers.forEach(m => map.removeLayer(m));
+  activeRoutes = [];
+  activeMarkers = [];
+}
+
+function showPointInfo(voyage, point) {
+  const badgeClass = voyage.type === 'torpedert' ? 'badge-torpedert' :
+                     voyage.type === 'marine' ? 'badge-marine' :
+                     voyage.type === 'land' ? 'badge-land' : 'badge-handel';
+
+  let stopsHtml = '<ul class="stops-list">';
+  voyage.points.forEach((p, i) => {
+    const dotColor = p.name.includes('TORPEDERT') || p.name.includes('GRUNNSTØTT') ? '#c0392b' : typeColors[voyage.type];
+    const isActive = p === point;
+    stopsHtml += `<li onclick="flyToPoint(${i})" style="${isActive ? 'background:var(--color-quote-bg);' : ''}">
+      <span class="stop-dot" style="background:${dotColor};"></span>
+      <span class="stop-name">${p.name.split('—')[0].split('–')[0].trim()}</span>
+    </li>`;
+  });
+  stopsHtml += '</ul>';
+
+  panelContent.innerHTML = `
+    <div class="info-panel-ship">${voyage.ship}</div>
+    <div class="info-panel-period">${voyage.period} &middot; ${voyage.role}</div>
+    <span class="info-panel-badge ${badgeClass}">${typeBadge[voyage.type]}</span>
+    ${point ? `<div class="info-panel-point">
+      <div class="info-panel-point-name">${point.name}</div>
+      <div class="info-panel-point-text">${point.text}</div>
+    </div>` : `<div class="info-panel-detail">${voyage.summary}</div>`}
+    ${stopsHtml}
+  `;
+  panel.classList.add('visible');
+}
+
+window.flyToPoint = function(index) {
+  if (!currentVoyage) return;
+  const p = currentVoyage.points[index];
+  map.setView([p.lat, p.lng], 7, { animate: true });
+  showPointInfo(currentVoyage, p);
+  // Open the marker popup too
+  activeMarkers.forEach(m => {
+    if (m.getLatLng().lat === p.lat && m.getLatLng().lng === p.lng) {
+      m.openPopup();
+    }
+  });
+};
+
+function showVoyage(voyage, openPanel) {
+  clearMap();
+  currentVoyage = voyage;
+  const color = typeColors[voyage.type];
+
+  voyage.routes.forEach(route => {
+    const line = L.polyline(route, {
+      color: color, weight: 2.5, opacity: 0.6,
+      dashArray: voyage.type === 'land' ? '5,8' : null
+    }).addTo(map);
+    activeRoutes.push(line);
+  });
+
+  const bounds = [];
+  voyage.points.forEach((pt, i) => {
+    const isTorpedo = pt.name.includes('TORPEDERT') || pt.name.includes('GRUNNSTØTT');
+    const isFirst = i === 0;
+    const isLast = i === voyage.points.length - 1;
+    let radius = 5, fillColor = color;
+    if (isTorpedo) { radius = 9; fillColor = '#c0392b'; }
+    else if (isFirst || isLast) { radius = 7; }
+
+    const marker = L.circleMarker([pt.lat, pt.lng], {
+      radius, fillColor, color: '#fff', weight: 2, fillOpacity: 0.9
+    }).addTo(map);
+
+    marker.bindPopup(`<strong>${pt.name.replace('\n','<br>')}</strong>`);
+    marker.on('click', () => {
+      showPointInfo(voyage, pt);
+    });
+
+    activeMarkers.push(marker);
+    bounds.push([pt.lat, pt.lng]);
+  });
+
+  if (bounds.length > 1) map.fitBounds(bounds, { padding: [60, 60], maxZoom: 7 });
+  else if (bounds.length === 1) map.setView(bounds[0], 6);
+
+  // Update buttons
+  document.querySelectorAll('.ship-btn').forEach(b => b.classList.remove('active'));
+  const btn = document.getElementById('btn-' + voyage.id);
+  if (btn) btn.classList.add('active');
+
+  if (openPanel !== false) showPointInfo(voyage, null);
+}
+
+// Build ship buttons
+const strip = document.getElementById('shipStrip');
+voyages.forEach(v => {
+  const btn = document.createElement('button');
+  btn.className = 'ship-btn' + (v.type === 'torpedert' ? ' torpedert' : '');
+  btn.id = 'btn-' + v.id;
+  btn.textContent = v.ship;
+  btn.addEventListener('click', () => showVoyage(v));
+  strip.appendChild(btn);
+});
+
+// Close panel on map click (mobile)
+map.on('click', (e) => {
+  if (e.originalEvent.target === map.getContainer() || e.originalEvent.target.classList.contains('leaflet-tile')) {
+    panel.classList.remove('visible');
+  }
+});
+
+// Show Navarra by default
+showVoyage(voyages[1]);
+
+// Theme toggle
+(function() {
+  const toggle = document.getElementById('themeToggle');
+  const root = document.documentElement;
+  const saved = localStorage.getItem('theme');
+  if (saved) root.setAttribute('data-theme', saved);
+
+  function updateIcon() {
+    const dark = isDarkMode();
+    toggle.innerHTML = dark ? '&#9788;' : '&#9790;';
+    toggle.setAttribute('aria-label', dark ? 'Bytt til lys modus' : 'Bytt til mørk modus');
+  }
+
+  function updateTiles() {
+    if (isDarkMode()) {
+      if (map.hasLayer(lightTiles)) map.removeLayer(lightTiles);
+      if (!map.hasLayer(darkTiles)) darkTiles.addTo(map);
+    } else {
+      if (map.hasLayer(darkTiles)) map.removeLayer(darkTiles);
+      if (!map.hasLayer(lightTiles)) lightTiles.addTo(map);
+    }
+  }
+
+  toggle.addEventListener('click', function() {
+    const next = isDarkMode() ? 'light' : 'dark';
+    root.setAttribute('data-theme', next);
+    localStorage.setItem('theme', next);
+    updateIcon();
+    updateTiles();
+  });
+
+  updateIcon();
+  updateTiles();
+})();
+</script>
+
+</body>
+</html>
