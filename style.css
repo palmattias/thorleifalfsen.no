@@ -179,6 +179,7 @@ main {
 }
 
 .chapter-image img {
+  max-width: 420px;
   width: 100%;
   display: block;
 }
